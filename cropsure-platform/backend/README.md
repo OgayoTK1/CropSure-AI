@@ -1,4 +1,5 @@
-# CropSure AI — Backend
+# CropSure AI — Backend 
+## By Ngugi James
 
 Parametric crop micro-insurance for Kenyan smallholder farmers.  
 Automatically detects crop stress via satellite NDVI and pays out via M-Pesa.
