@@ -20,7 +20,7 @@ AT_API_KEY = os.getenv("AT_API_KEY", "")
 AT_USERNAME = os.getenv("AT_USERNAME", "sandbox")
 AT_SMS_URL = "https://api.africastalking.com/version1/messaging"
 
-# Meta WhatsApp Business Cloud
+# Meta WhatsApp Business Cloud API
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN", "")
 WHATSAPP_PHONE_ID = os.getenv("WHATSAPP_PHONE_ID", "")
 WHATSAPP_URL = f"https://graph.facebook.com/v19.0/{WHATSAPP_PHONE_ID}/messages"
