@@ -1,69 +1,129 @@
 """
-Farm enrollment and retrieval endpoints.
+Farm enrollment and retrieval.
 
-POST /farms/enroll   — register a farmer + farm, trigger premium STK push
-GET  /farms          — list all farms (with farmer info)
-GET  /farms/{farm_id} — get a single farm
+POST /farms/enroll           — register farmer + farm, STK push for premium
+GET  /farms/{farm_id}        — farm details + policy + latest NDVI + payout history
+GET  /farms                  — admin list with current health status
 """
+import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from database import get_db
-from models import Farm, Farmer, MpesaTransaction
+from models import Farm, Policy, NdviReading, Payout, PolicyStatus
 from mpesa import stk_push
+from trigger import call_ml_baseline
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# KES rates
+PREMIUM_RATE_PER_ACRE = 300
+COVERAGE_MULTIPLIER = 10   # coverage = premium * 10
+
 
 # ---------------------------------------------------------------------------
-# Schemas
+# GeoJSON + area helpers
 # ---------------------------------------------------------------------------
 
-class FarmerIn(BaseModel):
-    full_name: str
-    phone_number: str = Field(..., examples=["254712345678"])
-    national_id: str
-    location: str
+def _validate_and_area(polygon_geojson: dict) -> float:
+    """Validate GeoJSON polygon and return area in acres."""
+    from shapely.geometry import shape
+    from pyproj import Geod
+
+    if polygon_geojson.get("type") not in ("Polygon", "MultiPolygon"):
+        raise ValueError("polygon_geojson must be a GeoJSON Polygon or MultiPolygon")
+    try:
+        poly = shape(polygon_geojson)
+    except Exception as exc:
+        raise ValueError(f"Invalid GeoJSON geometry: {exc}")
+    if not poly.is_valid:
+        raise ValueError("Polygon geometry is self-intersecting or otherwise invalid")
+
+    geod = Geod(ellps="WGS84")
+    area_m2, _ = geod.geometry_area_perimeter(poly)
+    return abs(area_m2) / 4046.86   # m² → acres
 
 
-class FarmIn(BaseModel):
-    name: str
-    latitude: float
-    longitude: float
-    acreage: float = Field(..., gt=0)
-    crop_type: str = Field(..., examples=["maize", "beans", "coffee"])
-    season: str = Field(..., examples=["2026A"])
-    premium_amount: float = Field(..., gt=0, description="KES premium to collect via STK")
-    payout_amount: float = Field(..., gt=0, description="KES to pay out on drought trigger")
-
+# ---------------------------------------------------------------------------
+# Request / response schemas
+# ---------------------------------------------------------------------------
 
 class EnrollRequest(BaseModel):
-    farmer: FarmerIn
-    farm: FarmIn
+    farmer_name: str = Field(..., min_length=2, max_length=100)
+    phone_number: str = Field(..., examples=["254712345678"])
+    polygon_geojson: dict
+    crop_type: str = Field(..., examples=["maize", "beans", "coffee"])
+    village: str
+
+    @field_validator("phone_number")
+    @classmethod
+    def phone_must_be_safaricom(cls, v: str) -> str:
+        import re
+        if not re.fullmatch(r"2547\d{8}", v):
+            raise ValueError("phone_number must be in format 2547XXXXXXXX")
+        return v
 
 
-class FarmOut(BaseModel):
+class PolicyOut(BaseModel):
     id: uuid.UUID
-    name: str
-    latitude: float
-    longitude: float
-    acreage: float
-    crop_type: str
-    season: str
-    premium_amount: float
-    payout_amount: float
-    is_active: bool
-    enrolled_at: datetime
-    farmer_name: str
-    farmer_phone: str
+    season_start: datetime
+    season_end: datetime
+    premium_paid_kes: float
+    coverage_amount_kes: float
+    status: str
+    mpesa_reference: str | None
+    created_at: datetime
 
-    model_config = {"from_attributes": True}
+
+class NdviOut(BaseModel):
+    reading_date: str
+    ndvi_value: float
+    stress_type: str | None
+    confidence: float | None
+    cloud_contaminated: bool
+
+
+class PayoutOut(BaseModel):
+    id: uuid.UUID
+    payout_amount_kes: float
+    stress_type: str
+    explanation_en: str
+    status: str
+    triggered_at: datetime
+    completed_at: datetime | None
+
+
+class FarmDetailOut(BaseModel):
+    id: uuid.UUID
+    farmer_name: str
+    phone_number: str
+    area_acres: float
+    crop_type: str
+    village: str
+    created_at: datetime
+    polygon_geojson: dict
+    policy: PolicyOut | None
+    latest_ndvi: NdviOut | None
+    payout_history: list[PayoutOut]
+
+
+class FarmListItem(BaseModel):
+    id: uuid.UUID
+    farmer_name: str
+    phone_number: str
+    area_acres: float
+    crop_type: str
+    village: str
+    health_status: str | None   # latest stress_type from NDVI readings
+    policy_status: str | None
+    created_at: datetime
 
 
 # ---------------------------------------------------------------------------
@@ -71,82 +131,173 @@ class FarmOut(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.post("/enroll", status_code=status.HTTP_201_CREATED)
-async def enroll_farm(body: EnrollRequest, db: AsyncSession = Depends(get_db)):
+async def enroll_farm(
+    body: EnrollRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
     """
-    Register a new farmer + farm and trigger an M-Pesa STK push to collect
-    the first premium payment.
+    Register a new farmer + farm.
+    - Validates GeoJSON polygon
+    - Calculates area via shapely/pyproj
+    - Creates Farm + Policy records
+    - Fires STK Push for premium (KES 300/acre)
+    - Queues ML baseline build in background
     """
-    # Upsert farmer by phone number
-    result = await db.execute(
-        select(Farmer).where(Farmer.phone_number == body.farmer.phone_number)
-    )
-    farmer = result.scalar_one_or_none()
-    if not farmer:
-        farmer = Farmer(**body.farmer.model_dump())
-        db.add(farmer)
-        await db.flush()
+    try:
+        area_acres = _validate_and_area(body.polygon_geojson)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
-    farm = Farm(farmer_id=farmer.id, **body.farm.model_dump())
+    premium = round(area_acres * PREMIUM_RATE_PER_ACRE, 2)
+    coverage = round(premium * COVERAGE_MULTIPLIER, 2)
+    now = datetime.utcnow()
+
+    farm = Farm(
+        farmer_name=body.farmer_name,
+        phone_number=body.phone_number,
+        polygon_geojson=body.polygon_geojson,
+        area_acres=area_acres,
+        crop_type=body.crop_type,
+        village=body.village,
+    )
     db.add(farm)
+    await db.flush()
+
+    policy = Policy(
+        farm_id=farm.id,
+        season_start=now,
+        season_end=now + timedelta(days=180),
+        premium_paid_kes=premium,
+        coverage_amount_kes=coverage,
+        status=PolicyStatus.pending_payment,
+    )
+    db.add(policy)
     await db.flush()
 
     # Initiate premium collection via STK Push
     stk_resp = {}
+    mpesa_stk_initiated = False
     try:
         stk_resp = await stk_push(
-            phone=farmer.phone_number,
-            amount=int(farm.premium_amount),
-            account_ref=str(farm.id),
-            description=f"CropSure Premium - {farm.name}",
+            phone=body.phone_number,
+            amount=int(premium),
+            account_ref=str(policy.id),
+            description=f"CropSure Premium - {body.village}",
         )
-        tx = MpesaTransaction(
-            transaction_type="STK",
-            checkout_request_id=stk_resp.get("CheckoutRequestID"),
-            merchant_request_id=stk_resp.get("MerchantRequestID"),
-            phone_number=farmer.phone_number,
-            amount=farm.premium_amount,
-            status="pending",
-            farm_id=farm.id,
-        )
-        db.add(tx)
+        policy.mpesa_reference = stk_resp.get("CheckoutRequestID")
+        mpesa_stk_initiated = True
     except Exception as exc:
-        # Enrollment succeeds even if STK push fails — can retry later from the frontend
+        logger.error("STK push failed for farm %s: %s", farm.id, exc)
         stk_resp = {"error": str(exc)}
+
+    # Fire-and-forget ML baseline build
+    background_tasks.add_task(call_ml_baseline, str(farm.id), body.polygon_geojson)
 
     return {
         "farm_id": str(farm.id),
-        "farmer_id": str(farmer.id),
-        "message": "Farm enrolled successfully.",
-        "stk_push": stk_resp,
+        "policy_id": str(policy.id),
+        "premium_amount": premium,
+        "mpesa_stk_initiated": mpesa_stk_initiated,
+        "stk_response": stk_resp,
     }
 
 
-@router.get("", response_model=list[FarmOut])
-async def list_farms(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Farm).options(selectinload(Farm.farmer)).order_by(Farm.enrolled_at.desc())
-    )
-    farms = result.scalars().all()
-    return [
-        FarmOut(
-            **{c.name: getattr(f, c.name) for c in Farm.__table__.columns},
-            farmer_name=f.farmer.full_name,
-            farmer_phone=f.farmer.phone_number,
-        )
-        for f in farms
-    ]
-
-
-@router.get("/{farm_id}", response_model=FarmOut)
+@router.get("/{farm_id}", response_model=FarmDetailOut)
 async def get_farm(farm_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(Farm).options(selectinload(Farm.farmer)).where(Farm.id == farm_id)
+        select(Farm)
+        .options(
+            selectinload(Farm.policies),
+            selectinload(Farm.ndvi_readings),
+            selectinload(Farm.payouts),
+        )
+        .where(Farm.id == farm_id)
     )
     farm = result.scalar_one_or_none()
     if not farm:
         raise HTTPException(status_code=404, detail="Farm not found")
-    return FarmOut(
-        **{c.name: getattr(farm, c.name) for c in Farm.__table__.columns},
-        farmer_name=farm.farmer.full_name,
-        farmer_phone=farm.farmer.phone_number,
+
+    active_policy = next(
+        (p for p in sorted(farm.policies, key=lambda p: p.created_at, reverse=True)
+         if p.status == PolicyStatus.active),
+        farm.policies[0] if farm.policies else None,
     )
+
+    sorted_readings = sorted(farm.ndvi_readings, key=lambda r: r.created_at, reverse=True)
+    latest = sorted_readings[0] if sorted_readings else None
+
+    return FarmDetailOut(
+        id=farm.id,
+        farmer_name=farm.farmer_name,
+        phone_number=farm.phone_number,
+        area_acres=farm.area_acres,
+        crop_type=farm.crop_type,
+        village=farm.village,
+        created_at=farm.created_at,
+        polygon_geojson=farm.polygon_geojson,
+        policy=PolicyOut(
+            id=active_policy.id,
+            season_start=active_policy.season_start,
+            season_end=active_policy.season_end,
+            premium_paid_kes=active_policy.premium_paid_kes,
+            coverage_amount_kes=active_policy.coverage_amount_kes,
+            status=active_policy.status.value,
+            mpesa_reference=active_policy.mpesa_reference,
+            created_at=active_policy.created_at,
+        ) if active_policy else None,
+        latest_ndvi=NdviOut(
+            reading_date=str(latest.reading_date),
+            ndvi_value=latest.ndvi_value,
+            stress_type=latest.stress_type,
+            confidence=latest.confidence,
+            cloud_contaminated=latest.cloud_contaminated,
+        ) if latest else None,
+        payout_history=[
+            PayoutOut(
+                id=p.id,
+                payout_amount_kes=p.payout_amount_kes,
+                stress_type=p.stress_type,
+                explanation_en=p.explanation_en,
+                status=p.status.value,
+                triggered_at=p.triggered_at,
+                completed_at=p.completed_at,
+            )
+            for p in sorted(farm.payouts, key=lambda p: p.triggered_at, reverse=True)
+        ],
+    )
+
+
+@router.get("", response_model=list[FarmListItem])
+async def list_farms(db: AsyncSession = Depends(get_db)):
+    """Admin dashboard — all farms with current health status."""
+    result = await db.execute(
+        select(Farm).options(
+            selectinload(Farm.policies),
+            selectinload(Farm.ndvi_readings),
+        ).order_by(Farm.created_at.desc())
+    )
+    farms = result.scalars().all()
+
+    items = []
+    for farm in farms:
+        sorted_readings = sorted(farm.ndvi_readings, key=lambda r: r.created_at, reverse=True)
+        latest_ndvi = sorted_readings[0] if sorted_readings else None
+
+        active_policy = next(
+            (p for p in farm.policies if p.status == PolicyStatus.active), None
+        )
+
+        items.append(FarmListItem(
+            id=farm.id,
+            farmer_name=farm.farmer_name,
+            phone_number=farm.phone_number,
+            area_acres=farm.area_acres,
+            crop_type=farm.crop_type,
+            village=farm.village,
+            health_status=latest_ndvi.stress_type if latest_ndvi else None,
+            policy_status=active_policy.status.value if active_policy else None,
+            created_at=farm.created_at,
+        ))
+
+    return items

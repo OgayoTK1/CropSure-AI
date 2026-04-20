@@ -1,209 +1,272 @@
 """
-Monitoring cycle pipeline — fetch farm indicators, detect drought, notify, payout.
+Monitoring cycle pipeline.
 
-Drought thresholds (configurable via env):
-  NDVI_DROUGHT_THRESHOLD   — NDVI below this value signals crop stress   (default 0.35)
-  RAINFALL_DROUGHT_MM      — Rainfall below this (mm/month) triggers payout (default 50.0)
-
-Weather data source: OpenWeatherMap current weather API (free tier).
-NDVI is simulated here; swap _fetch_ndvi() with a real satellite API (e.g. Sentinel Hub).
+Flow per active policy:
+  1. Call ML /analyze with farm polygon → NDVI + stress assessment
+  2. Store NdviReading
+  3. If payout_recommended AND no payout in last 30 days:
+       a. Create Payout record (status=processing)
+       b. Initiate M-Pesa B2C
+       c. Store ConversationID on payout
+       d. Send SMS + WhatsApp bilingual alert
 """
-import os
 import logging
-import random
+import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from models import Farm, Farmer, MonitoringCycle, MpesaTransaction
+from models import Farm, Policy, NdviReading, Payout, PolicyStatus, PayoutStatus
 from mpesa import b2c_payment
-from notifications import notify_farmer
+from notifications import send_payout_notification
 
 logger = logging.getLogger(__name__)
 
-OWM_API_KEY = os.getenv("OWM_API_KEY", "")
-NDVI_DROUGHT_THRESHOLD = float(os.getenv("NDVI_DROUGHT_THRESHOLD", "0.35"))
-RAINFALL_DROUGHT_MM = float(os.getenv("RAINFALL_DROUGHT_MM", "50.0"))
+ML_SERVICE_URL = os.getenv("ML_SERVICE_URL", "http://localhost:8001")
 
 
 # ---------------------------------------------------------------------------
-# Data fetchers
+# ML service helpers
 # ---------------------------------------------------------------------------
 
-async def _fetch_rainfall(lat: float, lon: float) -> float:
+async def _call_ml_analyze(farm_id: str, polygon_geojson: dict) -> dict:
     """
-    Fetch current rainfall (mm) from OpenWeatherMap for the given coordinates.
-    Returns 0.0 if the API key is unset or the request fails.
+    POST {ML_SERVICE_URL}/analyze
+    Expected response:
+      { ndvi_value, stress_type, confidence, cloud_contaminated,
+        payout_recommended, payout_amount_kes, explanation_en, explanation_sw }
     """
-    if not OWM_API_KEY:
-        logger.warning("OWM_API_KEY not set — rainfall defaulting to 0.0")
-        return 0.0
-
-    url = (
-        f"https://api.openweathermap.org/data/2.5/weather"
-        f"?lat={lat}&lon={lon}&appid={OWM_API_KEY}&units=metric"
-    )
     async with httpx.AsyncClient() as client:
-        resp = await client.get(url, timeout=10)
+        resp = await client.post(
+            f"{ML_SERVICE_URL}/analyze",
+            json={"farm_id": farm_id, "polygon_geojson": polygon_geojson},
+            timeout=30,
+        )
         resp.raise_for_status()
-        data = resp.json()
-
-    rain = data.get("rain", {})
-    return float(rain.get("1h", rain.get("3h", 0.0)))
+        return resp.json()
 
 
-def _fetch_ndvi(lat: float, lon: float) -> float:
-    """
-    Return a simulated NDVI score (0–1).
-    Replace with a real satellite imagery API call (Sentinel Hub, Planet, etc.).
-    """
-    # Seeded by coordinates so the same farm gets consistent results in tests.
-    rng = random.Random(f"{lat:.4f}{lon:.4f}{datetime.utcnow().strftime('%Y%m%d')}")
-    return round(rng.uniform(0.20, 0.70), 4)
+async def call_ml_baseline(farm_id: str, polygon_geojson: dict) -> None:
+    """Fire-and-forget: build NDVI baseline for a newly enrolled farm."""
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                f"{ML_SERVICE_URL}/build-baseline",
+                json={"farm_id": farm_id, "polygon_geojson": polygon_geojson},
+                timeout=60,
+            )
+        logger.info("ML baseline build requested for farm %s", farm_id)
+    except Exception as exc:
+        logger.error("ML baseline build failed for farm %s: %s", farm_id, exc)
 
 
 # ---------------------------------------------------------------------------
-# Drought detection logic
+# Payout guard
 # ---------------------------------------------------------------------------
 
-def is_drought(ndvi: float, rainfall_mm: float) -> bool:
-    return ndvi < NDVI_DROUGHT_THRESHOLD or rainfall_mm < RAINFALL_DROUGHT_MM
+async def _has_recent_payout(farm_id: uuid.UUID, db: AsyncSession) -> bool:
+    """Return True if a non-failed payout was triggered in the last 30 days."""
+    cutoff = datetime.utcnow() - timedelta(days=30)
+    result = await db.execute(
+        select(Payout).where(
+            Payout.farm_id == farm_id,
+            Payout.triggered_at >= cutoff,
+            Payout.status.notin_([PayoutStatus.failed]),
+        )
+    )
+    return result.scalar_one_or_none() is not None
 
 
 # ---------------------------------------------------------------------------
 # Core pipeline
 # ---------------------------------------------------------------------------
 
-async def _process_farm(farm: Farm, farmer: Farmer, db: AsyncSession) -> MonitoringCycle:
-    """Run one monitoring cycle for a single farm."""
-    rainfall = await _fetch_rainfall(farm.latitude, farm.longitude)
-    ndvi = _fetch_ndvi(farm.latitude, farm.longitude)
-    drought = is_drought(ndvi, rainfall)
+async def _process_policy(policy: Policy, farm: Farm, db: AsyncSession) -> dict:
+    """Run one monitoring cycle for a single active policy."""
+    ml = await _call_ml_analyze(str(farm.id), farm.polygon_geojson)
 
-    cycle = MonitoringCycle(
+    reading = NdviReading(
         farm_id=farm.id,
-        ndvi_score=ndvi,
-        rainfall_mm=rainfall,
-        drought_detected=drought,
+        reading_date=datetime.utcnow().date(),
+        ndvi_value=ml["ndvi_value"],
+        stress_type=ml.get("stress_type"),
+        confidence=ml.get("confidence"),
+        cloud_contaminated=ml.get("cloud_contaminated", False),
     )
-    db.add(cycle)
-    await db.flush()  # get cycle.id without committing
+    db.add(reading)
+    await db.flush()
 
-    if drought:
-        message = (
-            f"Dear {farmer.full_name}, drought conditions detected on your farm "
-            f"'{farm.name}' (NDVI={ndvi}, Rainfall={rainfall}mm). "
-            f"A payout of KES {farm.payout_amount:,.0f} is being processed."
+    summary = {
+        "farm_id": str(farm.id),
+        "farm_name": farm.village,
+        "ndvi_value": ml["ndvi_value"],
+        "stress_type": ml.get("stress_type"),
+        "payout_triggered": False,
+    }
+
+    if not ml.get("payout_recommended"):
+        return summary
+
+    if await _has_recent_payout(farm.id, db):
+        summary["skipped"] = "payout already issued in last 30 days"
+        return summary
+
+    # Create payout record
+    payout = Payout(
+        policy_id=policy.id,
+        farm_id=farm.id,
+        payout_amount_kes=ml["payout_amount_kes"],
+        stress_type=ml.get("stress_type", "unknown"),
+        explanation_en=ml.get("explanation_en", ""),
+        explanation_sw=ml.get("explanation_sw", ""),
+        status=PayoutStatus.processing,
+    )
+    db.add(payout)
+    await db.flush()
+
+    # Initiate B2C
+    try:
+        b2c_resp = await b2c_payment(
+            phone=farm.phone_number,
+            amount=int(ml["payout_amount_kes"]),
+            remarks=f"CropSure payout - {farm.village} ({ml.get('stress_type', '')})",
         )
-        try:
-            await notify_farmer(farmer.phone_number, message)
-            cycle.alert_sent = True
-        except Exception as exc:
-            logger.error("Notification failed for farm %s: %s", farm.id, exc)
+        payout.mpesa_transaction_id = b2c_resp.get("ConversationID")
+        summary["payout_triggered"] = True
+        summary["conversation_id"] = payout.mpesa_transaction_id
+    except Exception as exc:
+        logger.error("B2C payout failed for farm %s: %s", farm.id, exc)
+        payout.status = PayoutStatus.failed
 
-        try:
-            result = await b2c_payment(
-                phone=farmer.phone_number,
-                amount=int(farm.payout_amount),
-                remarks=f"Drought payout - {farm.name}",
-            )
-            tx = MpesaTransaction(
-                transaction_type="B2C",
-                conversation_id=result.get("ConversationID"),
-                phone_number=farmer.phone_number,
-                amount=farm.payout_amount,
-                status="pending",
-                farm_id=farm.id,
-            )
-            db.add(tx)
-            cycle.payout_initiated = True
-        except Exception as exc:
-            logger.error("B2C payout failed for farm %s: %s", farm.id, exc)
+    # Notify farmer (non-blocking)
+    try:
+        await send_payout_notification(
+            phone=farm.phone_number,
+            farmer_name=farm.farmer_name,
+            payout_amount_kes=ml["payout_amount_kes"],
+            explanation_en=ml.get("explanation_en", ""),
+            explanation_sw=ml.get("explanation_sw", ""),
+        )
+    except Exception as exc:
+        logger.error("Notification failed for farm %s: %s", farm.id, exc)
 
-    cycle.notes = f"NDVI={ndvi}, Rainfall={rainfall}mm, Drought={drought}"
-    return cycle
+    return summary
 
 
 async def run_monitoring_cycle(db: AsyncSession) -> list[dict]:
     """
-    Run the full monitoring cycle for all active farms.
-    Returns a summary list of cycle results.
+    Run the full monitoring cycle for every active policy.
+    Returns a per-farm summary list.
     """
     result = await db.execute(
-        select(Farm, Farmer)
-        .join(Farmer, Farm.farmer_id == Farmer.id)
-        .where(Farm.is_active.is_(True))
+        select(Policy)
+        .options(selectinload(Policy.farm))
+        .where(Policy.status == PolicyStatus.active)
     )
-    rows = result.all()
+    policies = result.scalars().all()
 
     summaries = []
-    for farm, farmer in rows:
+    for policy in policies:
         try:
-            cycle = await _process_farm(farm, farmer, db)
-            summaries.append({
-                "farm_id": str(farm.id),
-                "farm_name": farm.name,
-                "ndvi": cycle.ndvi_score,
-                "rainfall_mm": cycle.rainfall_mm,
-                "drought_detected": cycle.drought_detected,
-                "alert_sent": cycle.alert_sent,
-                "payout_initiated": cycle.payout_initiated,
-            })
+            summary = await _process_policy(policy, policy.farm, db)
+            summaries.append(summary)
         except Exception as exc:
-            logger.error("Monitoring failed for farm %s: %s", farm.id, exc)
-            summaries.append({"farm_id": str(farm.id), "error": str(exc)})
+            logger.error("Monitoring failed for policy %s: %s", policy.id, exc)
+            summaries.append({"policy_id": str(policy.id), "error": str(exc)})
 
     return summaries
 
 
 async def simulate_drought(farm_id: uuid.UUID, db: AsyncSession) -> dict:
     """
-    Force-inject a drought cycle for a specific farm (for testing/demos).
-    Bypasses real weather data and uses threshold-breaking values.
+    Force a drought payout pipeline for a specific farm (demo/testing).
+    Fires the full pipeline including real B2C and notifications.
     """
     result = await db.execute(
-        select(Farm, Farmer)
-        .join(Farmer, Farm.farmer_id == Farmer.id)
-        .where(Farm.id == farm_id)
+        select(Farm).where(Farm.id == farm_id)
     )
-    row = result.first()
-    if not row:
+    farm = result.scalar_one_or_none()
+    if not farm:
         raise ValueError(f"Farm {farm_id} not found")
 
-    farm, farmer = row
-    ndvi = NDVI_DROUGHT_THRESHOLD - 0.05          # just below threshold
-    rainfall = RAINFALL_DROUGHT_MM - 10.0         # just below threshold
-
-    cycle = MonitoringCycle(
-        farm_id=farm.id,
-        ndvi_score=ndvi,
-        rainfall_mm=rainfall,
-        drought_detected=True,
-        notes="Simulated drought cycle",
+    # Get active policy
+    pol_result = await db.execute(
+        select(Policy).where(
+            Policy.farm_id == farm_id,
+            Policy.status == PolicyStatus.active,
+        )
     )
-    db.add(cycle)
+    policy = pol_result.scalar_one_or_none()
+    if not policy:
+        raise ValueError(f"No active policy for farm {farm_id}")
+
+    # Build a synthetic ML response
+    simulated_ml = {
+        "ndvi_value": 0.18,
+        "stress_type": "drought",
+        "confidence": 0.95,
+        "cloud_contaminated": False,
+        "payout_recommended": True,
+        "payout_amount_kes": policy.coverage_amount_kes * 0.5,
+        "explanation_en": "NDVI dropped 48% below your seasonal baseline indicating severe drought stress.",
+        "explanation_sw": "NDVI ilishuka asilimia 48 chini ya kiwango cha msimu, ikionyesha ukame mkali.",
+    }
+
+    reading = NdviReading(
+        farm_id=farm.id,
+        reading_date=datetime.utcnow().date(),
+        ndvi_value=simulated_ml["ndvi_value"],
+        stress_type="drought",
+        confidence=0.95,
+        cloud_contaminated=False,
+    )
+    db.add(reading)
+
+    payout = Payout(
+        policy_id=policy.id,
+        farm_id=farm.id,
+        payout_amount_kes=simulated_ml["payout_amount_kes"],
+        stress_type="drought",
+        explanation_en=simulated_ml["explanation_en"],
+        explanation_sw=simulated_ml["explanation_sw"],
+        status=PayoutStatus.processing,
+    )
+    db.add(payout)
     await db.flush()
 
-    message = (
-        f"[SIMULATION] Dear {farmer.full_name}, drought conditions detected on "
-        f"'{farm.name}'. Payout of KES {farm.payout_amount:,.0f} would be triggered."
-    )
+    b2c_resp = {}
     try:
-        await notify_farmer(farmer.phone_number, message)
-        cycle.alert_sent = True
+        b2c_resp = await b2c_payment(
+            phone=farm.phone_number,
+            amount=int(simulated_ml["payout_amount_kes"]),
+            remarks=f"[DEMO] CropSure drought payout - {farm.village}",
+        )
+        payout.mpesa_transaction_id = b2c_resp.get("ConversationID")
     except Exception as exc:
-        logger.error("Simulation notification failed: %s", exc)
+        logger.error("Demo B2C failed for farm %s: %s", farm.id, exc)
+        payout.status = PayoutStatus.failed
+
+    try:
+        await send_payout_notification(
+            phone=farm.phone_number,
+            farmer_name=farm.farmer_name,
+            payout_amount_kes=simulated_ml["payout_amount_kes"],
+            explanation_en=simulated_ml["explanation_en"],
+            explanation_sw=simulated_ml["explanation_sw"],
+        )
+    except Exception as exc:
+        logger.error("Demo notification failed: %s", exc)
 
     return {
         "farm_id": str(farm.id),
-        "farm_name": farm.name,
-        "ndvi": ndvi,
-        "rainfall_mm": rainfall,
-        "drought_detected": True,
-        "alert_sent": cycle.alert_sent,
-        "payout_initiated": False,
-        "note": "Simulation — no real B2C payout triggered",
+        "farmer_name": farm.farmer_name,
+        "simulated_ndvi": simulated_ml["ndvi_value"],
+        "payout_amount_kes": simulated_ml["payout_amount_kes"],
+        "conversation_id": b2c_resp.get("ConversationID"),
+        "payout_status": payout.status,
+        "note": "Simulated drought — full pipeline executed",
     }

@@ -1,89 +1,105 @@
 import uuid
-from datetime import datetime
-from sqlalchemy import String, Float, Boolean, DateTime, ForeignKey, Uuid
+import enum
+from datetime import datetime, date
+from sqlalchemy import String, Float, Boolean, DateTime, Date, ForeignKey, Uuid, Enum, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
 
 
-class Farmer(Base):
-    __tablename__ = "farmers"
+class PolicyStatus(str, enum.Enum):
+    pending_payment = "pending_payment"
+    active = "active"
+    expired = "expired"
+    payment_failed = "payment_failed"
 
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    full_name: Mapped[str] = mapped_column(String(100))
-    phone_number: Mapped[str] = mapped_column(String(20), unique=True, index=True)
-    national_id: Mapped[str] = mapped_column(String(20), unique=True)
-    location: Mapped[str] = mapped_column(String(200))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    farms: Mapped[list["Farm"]] = relationship(back_populates="farmer")
-    notifications: Mapped[list["Notification"]] = relationship(back_populates="farmer")
+class PayoutStatus(str, enum.Enum):
+    pending = "pending"
+    processing = "processing"
+    completed = "completed"
+    failed = "failed"
 
 
 class Farm(Base):
     __tablename__ = "farms"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    farmer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("farmers.id"))
-    name: Mapped[str] = mapped_column(String(100))
-    latitude: Mapped[float] = mapped_column(Float)
-    longitude: Mapped[float] = mapped_column(Float)
-    acreage: Mapped[float] = mapped_column(Float)
+    farmer_name: Mapped[str] = mapped_column(String(100))
+    phone_number: Mapped[str] = mapped_column(String(20), index=True)   # 2547XXXXXXXX
+    polygon_geojson: Mapped[dict] = mapped_column(JSON)
+    area_acres: Mapped[float] = mapped_column(Float)
     crop_type: Mapped[str] = mapped_column(String(50))
-    season: Mapped[str] = mapped_column(String(20))        # e.g. "2027A"
-    premium_amount: Mapped[float] = mapped_column(Float)   # KES paid by farmer
-    payout_amount: Mapped[float] = mapped_column(Float)    # KES paid out on drought
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    enrolled_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-    farmer: Mapped["Farmer"] = relationship(back_populates="farms")
-    monitoring_cycles: Mapped[list["MonitoringCycle"]] = relationship(back_populates="farm")
-    transactions: Mapped[list["MpesaTransaction"]] = relationship(back_populates="farm")
-
-
-class MpesaTransaction(Base):
-    __tablename__ = "mpesa_transactions"
-
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    transaction_type: Mapped[str] = mapped_column(String(10))        # STK | B2C
-    checkout_request_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    merchant_request_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    conversation_id: Mapped[str | None] = mapped_column(String(100), nullable=True)  # B2C
-    phone_number: Mapped[str] = mapped_column(String(20))
-    amount: Mapped[float] = mapped_column(Float)
-    mpesa_receipt_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending | success | failed
-    farm_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("farms.id"), nullable=True)
+    village: Mapped[str] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    farm: Mapped["Farm | None"] = relationship(back_populates="transactions")
+    policies: Mapped[list["Policy"]] = relationship(back_populates="farm")
+    ndvi_readings: Mapped[list["NdviReading"]] = relationship(back_populates="farm")
+    payouts: Mapped[list["Payout"]] = relationship(back_populates="farm")
+    baseline: Mapped["Baseline | None"] = relationship(back_populates="farm", uselist=False)
 
 
-class MonitoringCycle(Base):
-    __tablename__ = "monitoring_cycles"
+class Policy(Base):
+    __tablename__ = "policies"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     farm_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("farms.id"))
-    triggered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    ndvi_score: Mapped[float | None] = mapped_column(Float, nullable=True)
-    rainfall_mm: Mapped[float | None] = mapped_column(Float, nullable=True)
-    drought_detected: Mapped[bool] = mapped_column(Boolean, default=False)
-    alert_sent: Mapped[bool] = mapped_column(Boolean, default=False)
-    payout_initiated: Mapped[bool] = mapped_column(Boolean, default=False)
-    notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    season_start: Mapped[datetime] = mapped_column(DateTime)
+    season_end: Mapped[datetime] = mapped_column(DateTime)
+    premium_paid_kes: Mapped[float] = mapped_column(Float)
+    coverage_amount_kes: Mapped[float] = mapped_column(Float)
+    status: Mapped[PolicyStatus] = mapped_column(
+        Enum(PolicyStatus), default=PolicyStatus.pending_payment
+    )
+    mpesa_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    farm: Mapped["Farm"] = relationship(back_populates="monitoring_cycles")
+    farm: Mapped["Farm"] = relationship(back_populates="policies")
+    payouts: Mapped[list["Payout"]] = relationship(back_populates="policy")
 
 
-class Notification(Base):
-    __tablename__ = "notifications"
+class NdviReading(Base):
+    __tablename__ = "ndvi_readings"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    farmer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("farmers.id"))
-    channel: Mapped[str] = mapped_column(String(20))       # sms or whatsapp
-    phone_number: Mapped[str] = mapped_column(String(20))
-    message: Mapped[str] = mapped_column(String(1000))
-    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending | sent | failed
-    sent_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    farm_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("farms.id"))
+    reading_date: Mapped[date] = mapped_column(Date)
+    ndvi_value: Mapped[float] = mapped_column(Float)
+    stress_type: Mapped[str | None] = mapped_column(String(50), nullable=True)   # drought | flood | pest | none
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cloud_contaminated: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    farmer: Mapped["Farmer"] = relationship(back_populates="notifications")
+    farm: Mapped["Farm"] = relationship(back_populates="ndvi_readings")
+
+
+class Payout(Base):
+    __tablename__ = "payouts"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    policy_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("policies.id"))
+    farm_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("farms.id"))
+    payout_amount_kes: Mapped[float] = mapped_column(Float)
+    stress_type: Mapped[str] = mapped_column(String(50))
+    explanation_en: Mapped[str] = mapped_column(String(500))
+    explanation_sw: Mapped[str] = mapped_column(String(500))
+    mpesa_transaction_id: Mapped[str | None] = mapped_column(String(100), nullable=True)  # ConversationID
+    status: Mapped[PayoutStatus] = mapped_column(
+        Enum(PayoutStatus), default=PayoutStatus.pending
+    )
+    triggered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    policy: Mapped["Policy"] = relationship(back_populates="payouts")
+    farm: Mapped["Farm"] = relationship(back_populates="payouts")
+
+
+class Baseline(Base):
+    __tablename__ = "baselines"
+
+    farm_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("farms.id"), primary_key=True)
+    baseline_data: Mapped[dict] = mapped_column(JSON)
+    last_updated: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    farm: Mapped["Farm"] = relationship(back_populates="baseline")

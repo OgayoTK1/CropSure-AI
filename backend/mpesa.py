@@ -13,14 +13,14 @@ load_dotenv()
 
 CONSUMER_KEY = os.getenv("MPESA_CONSUMER_KEY", "")
 CONSUMER_SECRET = os.getenv("MPESA_CONSUMER_SECRET", "")
-SHORTCODE = os.getenv("MPESA_SHORTCODE", "174379")          # default: Daraja sandbox
+SHORTCODE = os.getenv("MPESA_SHORTCODE", "174379")
 PASSKEY = os.getenv("MPESA_PASSKEY", "")
-B2C_INITIATOR_NAME = os.getenv("MPESA_B2C_INITIATOR_NAME", "")
-B2C_SECURITY_CREDENTIAL = os.getenv("MPESA_B2C_SECURITY_CREDENTIAL", "")
-CALLBACK_URL = os.getenv("MPESA_CALLBACK_URL", "https://example.com/webhooks/stk-callback")
-B2C_RESULT_URL = os.getenv("MPESA_B2C_RESULT_URL", "https://example.com/webhooks/b2c-result")
-B2C_TIMEOUT_URL = os.getenv("MPESA_B2C_TIMEOUT_URL", "https://example.com/webhooks/b2c-timeout")
-ENVIRONMENT = os.getenv("MPESA_ENVIRONMENT", "sandbox")  # sandbox or production
+INITIATOR_NAME = os.getenv("MPESA_INITIATOR_NAME", "")
+SECURITY_CREDENTIAL = os.getenv("MPESA_SECURITY_CREDENTIAL", "")
+CALLBACK_URL = os.getenv("MPESA_CALLBACK_URL", "https://example.com/mpesa/stk-callback")
+B2C_RESULT_URL = os.getenv("MPESA_B2C_RESULT_URL", "https://example.com/mpesa/b2c-callback")
+B2C_TIMEOUT_URL = os.getenv("MPESA_B2C_TIMEOUT_URL", "https://example.com/mpesa/b2c-timeout")
+ENVIRONMENT = os.getenv("MPESA_ENVIRONMENT", "sandbox")  # sandbox | production
 
 BASE_URL = (
     "https://sandbox.safaricom.co.ke"
@@ -60,7 +60,7 @@ async def stk_push(phone: str, amount: int, account_ref: str, description: str) 
         description: Short transaction description
 
     Returns:
-        Daraja API response dict (includes CheckoutRequestID, MerchantRequestID)
+        Daraja API response — includes CheckoutRequestID and MerchantRequestID.
     """
     token = await _get_access_token()
     password, timestamp = _stk_password()
@@ -100,13 +100,13 @@ async def b2c_payment(phone: str, amount: int, remarks: str) -> dict:
         remarks: Short description e.g. "Drought payout - Farm XYZ"
 
     Returns:
-        Daraja API response dict (includes ConversationID, OriginatorConversationID)
+        Daraja API response — includes ConversationID and OriginatorConversationID.
     """
     token = await _get_access_token()
 
     payload = {
-        "InitiatorName": B2C_INITIATOR_NAME,
-        "SecurityCredential": B2C_SECURITY_CREDENTIAL,
+        "InitiatorName": INITIATOR_NAME,
+        "SecurityCredential": SECURITY_CREDENTIAL,
         "CommandID": "BusinessPayment",
         "Amount": amount,
         "PartyA": SHORTCODE,

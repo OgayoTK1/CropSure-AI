@@ -1,9 +1,9 @@
 """
-M-Pesa Daraja callback endpoints.
+M-Pesa Daraja callback endpoints (mounted at /mpesa).
 
-POST /webhooks/stk-callback   — STK Push payment result
-POST /webhooks/b2c-result     — B2C payout result
-POST /webhooks/b2c-timeout    — B2C payout timeout
+POST /mpesa/stk-callback   — STK Push result → updates Policy status
+POST /mpesa/b2c-callback   — B2C payout result → updates Payout status
+POST /mpesa/b2c-timeout    — B2C queue timeout → marks Payout failed
 """
 import logging
 from datetime import datetime
@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import MpesaTransaction
+from models import Policy, Payout, PolicyStatus, PayoutStatus
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -22,11 +22,12 @@ logger = logging.getLogger(__name__)
 @router.post("/stk-callback")
 async def stk_callback(request: Request, db: AsyncSession = Depends(get_db)):
     """
-    Safaricom calls this after an STK Push completes (success or failure).
-    Updates the corresponding MpesaTransaction record.
+    Safaricom posts here after STK Push completes.
+    On success: sets Policy.status = active, stores receipt in mpesa_reference.
+    On failure: sets Policy.status = payment_failed.
     """
     body = await request.json()
-    logger.info("STK callback received: %s", body)
+    logger.info("STK callback: %s", body)
 
     try:
         callback = body["Body"]["stkCallback"]
@@ -34,38 +35,40 @@ async def stk_callback(request: Request, db: AsyncSession = Depends(get_db)):
         result_code = int(callback["ResultCode"])
 
         result = await db.execute(
-            select(MpesaTransaction).where(
-                MpesaTransaction.checkout_request_id == checkout_request_id
-            )
+            select(Policy).where(Policy.mpesa_reference == checkout_request_id)
         )
-        tx = result.scalar_one_or_none()
+        policy = result.scalar_one_or_none()
 
-        if tx:
+        if policy:
             if result_code == 0:
-                # Extract receipt from CallbackMetadata
                 items = {
                     item["Name"]: item.get("Value")
                     for item in callback.get("CallbackMetadata", {}).get("Item", [])
                 }
-                tx.mpesa_receipt_number = str(items.get("MpesaReceiptNumber", ""))
-                tx.status = "success"
+                policy.mpesa_reference = str(items.get("MpesaReceiptNumber", checkout_request_id))
+                policy.status = PolicyStatus.active
+                logger.info("Policy %s activated via STK", policy.id)
             else:
-                tx.status = "failed"
-            tx.updated_at = datetime.utcnow()
+                policy.status = PolicyStatus.payment_failed
+                logger.warning("STK payment failed for policy %s (code %s)", policy.id, result_code)
+        else:
+            logger.warning("No policy found for CheckoutRequestID %s", checkout_request_id)
+
     except (KeyError, TypeError) as exc:
         logger.error("STK callback parse error: %s | body: %s", exc, body)
 
     return {"ResultCode": 0, "ResultDesc": "Accepted"}
 
 
-@router.post("/b2c-result")
-async def b2c_result(request: Request, db: AsyncSession = Depends(get_db)):
+@router.post("/b2c-callback")
+async def b2c_callback(request: Request, db: AsyncSession = Depends(get_db)):
     """
-    Safaricom calls this after a B2C payment completes.
-    Updates the corresponding MpesaTransaction record.
+    Safaricom posts here after B2C payout completes.
+    On success: sets Payout.status = completed, records completed_at.
+    On failure: sets Payout.status = failed (manual retry required).
     """
     body = await request.json()
-    logger.info("B2C result received: %s", body)
+    logger.info("B2C callback: %s", body)
 
     try:
         result_body = body["Result"]
@@ -73,25 +76,26 @@ async def b2c_result(request: Request, db: AsyncSession = Depends(get_db)):
         result_code = int(result_body["ResultCode"])
 
         result = await db.execute(
-            select(MpesaTransaction).where(
-                MpesaTransaction.conversation_id == conversation_id
-            )
+            select(Payout).where(Payout.mpesa_transaction_id == conversation_id)
         )
-        tx = result.scalar_one_or_none()
+        payout = result.scalar_one_or_none()
 
-        if tx:
+        if payout:
             if result_code == 0:
-                params = {
-                    p["Key"]: p["Value"]
-                    for p in result_body.get("ResultParameters", {}).get("ResultParameter", [])
-                }
-                tx.mpesa_receipt_number = str(params.get("TransactionReceipt", ""))
-                tx.status = "success"
+                payout.status = PayoutStatus.completed
+                payout.completed_at = datetime.utcnow()
+                logger.info("Payout %s completed (ConversationID %s)", payout.id, conversation_id)
             else:
-                tx.status = "failed"
-            tx.updated_at = datetime.utcnow()
+                payout.status = PayoutStatus.failed
+                logger.error(
+                    "B2C payout %s failed (code %s): %s",
+                    payout.id, result_code, result_body.get("ResultDesc"),
+                )
+        else:
+            logger.warning("No payout found for ConversationID %s", conversation_id)
+
     except (KeyError, TypeError) as exc:
-        logger.error("B2C result parse error: %s | body: %s", exc, body)
+        logger.error("B2C callback parse error: %s | body: %s", exc, body)
 
     return {"ResultCode": 0, "ResultDesc": "Accepted"}
 
@@ -99,23 +103,20 @@ async def b2c_result(request: Request, db: AsyncSession = Depends(get_db)):
 @router.post("/b2c-timeout")
 async def b2c_timeout(request: Request, db: AsyncSession = Depends(get_db)):
     """
-    Safaricom calls this when a B2C request times out in the queue.
-    Marks the transaction as null/failed so it can be retried.
+    Safaricom posts here when a B2C request times out in the queue.
+    Marks the payout as failed so it can be retried manually.
     """
     body = await request.json()
-    logger.warning("B2C timeout received: %s", body)
+    logger.warning("B2C timeout: %s", body)
 
     try:
         conversation_id = body["Result"]["ConversationID"]
         result = await db.execute(
-            select(MpesaTransaction).where(
-                MpesaTransaction.conversation_id == conversation_id
-            )
+            select(Payout).where(Payout.mpesa_transaction_id == conversation_id)
         )
-        tx = result.scalar_one_or_none()
-        if tx:
-            tx.status = "failed"
-            tx.updated_at = datetime.utcnow()
+        payout = result.scalar_one_or_none()
+        if payout:
+            payout.status = PayoutStatus.failed
     except (KeyError, TypeError) as exc:
         logger.error("B2C timeout parse error: %s | body: %s", exc, body)
 
