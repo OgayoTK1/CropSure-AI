@@ -20,7 +20,7 @@ B2C_SECURITY_CREDENTIAL = os.getenv("MPESA_B2C_SECURITY_CREDENTIAL", "")
 CALLBACK_URL = os.getenv("MPESA_CALLBACK_URL", "https://example.com/webhooks/stk-callback")
 B2C_RESULT_URL = os.getenv("MPESA_B2C_RESULT_URL", "https://example.com/webhooks/b2c-result")
 B2C_TIMEOUT_URL = os.getenv("MPESA_B2C_TIMEOUT_URL", "https://example.com/webhooks/b2c-timeout")
-ENVIRONMENT = os.getenv("MPESA_ENVIRONMENT", "sandbox")  # sandbox | production
+ENVIRONMENT = os.getenv("MPESA_ENVIRONMENT", "sandbox")  # sandbox or production
 
 BASE_URL = (
     "https://sandbox.safaricom.co.ke"
