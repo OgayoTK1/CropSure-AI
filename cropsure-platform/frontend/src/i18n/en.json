@@ -1,0 +1,98 @@
+{
+  "enrollment": {
+    "title": "Enroll Your Farm",
+    "step1": "Farmer Details",
+    "step2": "GPS Boundary",
+    "step3": "Payment"
+  },
+  "farmer": {
+    "fullName": "Full Name",
+    "fullNamePlaceholder": "e.g. James Mwangi",
+    "phone": "Phone Number (M-Pesa)",
+    "phonePlaceholder": "07XXXXXXXX",
+    "phoneError": "Enter a valid Kenyan number (07XXXXXXXX)",
+    "village": "Village / Location",
+    "villagePlaceholder": "e.g. Kiambu",
+    "cropType": "Crop Type",
+    "selectCrop": "Select crop..."
+  },
+  "map": {
+    "walkMode": "Walk Mode",
+    "manualMode": "Manual Mode",
+    "startWalking": "Start Walking",
+    "stopClose": "Stop & Close Boundary",
+    "gpsPoints": "{{count}} GPS points captured",
+    "clickToClose": "Click the first point to close the boundary",
+    "clickToAdd": "Click on the map to add boundary points",
+    "area": "Farm Area",
+    "confirm": "Confirm Farm Boundary",
+    "gpsError": "GPS not available on this device",
+    "minPoints": "Walk at least 4 GPS points before stopping"
+  },
+  "payment": {
+    "summary": "Policy Summary",
+    "farmArea": "Farm Area",
+    "cropType": "Crop Type",
+    "premium": "Annual Premium",
+    "coverage": "Coverage Amount",
+    "period": "Coverage Period",
+    "payButton": "Pay KES {{amount}} via M-Pesa",
+    "processing": "Processing...",
+    "successTitle": "Farm Enrolled!",
+    "successMessage": "M-Pesa payment prompt sent to {{phone}}",
+    "policy": "Policy #{{id}}",
+    "back": "Back",
+    "enrollAnother": "Enroll Another Farm"
+  },
+  "dashboard": {
+    "title": "Admin Dashboard",
+    "demo": "Simulating Demo",
+    "totalFarms": "Total Enrolled Farms",
+    "activePolicies": "Active Policies",
+    "payouts": "Payouts This Season (KES)",
+    "farmsUnderStress": "Farms Under Stress",
+    "recentActivity": "Recent Activity",
+    "ndviTrend": "NDVI Trend",
+    "selectFarm": "Select a farm on the map to view its NDVI trend",
+    "simulateDrought": "Simulate Drought Event",
+    "simulating": "Simulating...",
+    "payoutToast": "Payout triggered! KES {{amount}} sent to {{phone}}",
+    "noFarmSelected": "Select a farm on the map first",
+    "baseline": "Historical Baseline",
+    "current": "Current Season",
+    "payoutTrigger": "Payout Triggered",
+    "healthy": "Healthy",
+    "mildStress": "Mild Stress",
+    "severeStress": "Severe Stress / Payout"
+  },
+  "farmDetail": {
+    "title": "Farm Detail",
+    "policy": "Policy Status",
+    "active": "Active",
+    "inactive": "Inactive",
+    "payoutHistory": "Payout History",
+    "noPayouts": "No payouts have been triggered for this farm.",
+    "payoutReason": "Reason",
+    "back": "Back to Dashboard",
+    "ndviTrend": "NDVI History"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Something went wrong",
+    "retry": "Try Again",
+    "noData": "No data available",
+    "acres": "acres",
+    "kes": "KES",
+    "to": "to",
+    "next": "Next",
+    "back": "Back",
+    "viewDetails": "View Details"
+  },
+  "lang": {
+    "toggle": "Swahili"
+  },
+  "nav": {
+    "enroll": "Enroll Farm",
+    "dashboard": "Dashboard"
+  }
+}
