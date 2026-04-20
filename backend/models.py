@@ -29,7 +29,7 @@ class Farm(Base):
     longitude: Mapped[float] = mapped_column(Float)
     acreage: Mapped[float] = mapped_column(Float)
     crop_type: Mapped[str] = mapped_column(String(50))
-    season: Mapped[str] = mapped_column(String(20))        # e.g. "2026A"
+    season: Mapped[str] = mapped_column(String(20))        # e.g. "2027A"
     premium_amount: Mapped[float] = mapped_column(Float)   # KES paid by farmer
     payout_amount: Mapped[float] = mapped_column(Float)    # KES paid out on drought
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -80,7 +80,7 @@ class Notification(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     farmer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("farmers.id"))
-    channel: Mapped[str] = mapped_column(String(20))       # sms | whatsapp
+    channel: Mapped[str] = mapped_column(String(20))       # sms or whatsapp
     phone_number: Mapped[str] = mapped_column(String(20))
     message: Mapped[str] = mapped_column(String(1000))
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending | sent | failed
