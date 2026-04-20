@@ -66,7 +66,7 @@ def _fetch_ndvi(lat: float, lon: float) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Drought detection
+# Drought detection logic
 # ---------------------------------------------------------------------------
 
 def is_drought(ndvi: float, rainfall_mm: float) -> bool:
