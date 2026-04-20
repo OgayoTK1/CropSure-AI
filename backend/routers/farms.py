@@ -110,7 +110,7 @@ async def enroll_farm(body: EnrollRequest, db: AsyncSession = Depends(get_db)):
         )
         db.add(tx)
     except Exception as exc:
-        # Enrollment succeeds even if STK push fails — can retry separately
+        # Enrollment succeeds even if STK push fails — can retry later from the frontend
         stk_resp = {"error": str(exc)}
 
     return {
