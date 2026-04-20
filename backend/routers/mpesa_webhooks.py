@@ -100,7 +100,7 @@ async def b2c_result(request: Request, db: AsyncSession = Depends(get_db)):
 async def b2c_timeout(request: Request, db: AsyncSession = Depends(get_db)):
     """
     Safaricom calls this when a B2C request times out in the queue.
-    Marks the transaction as failed so it can be retried.
+    Marks the transaction as null/failed so it can be retried.
     """
     body = await request.json()
     logger.warning("B2C timeout received: %s", body)
