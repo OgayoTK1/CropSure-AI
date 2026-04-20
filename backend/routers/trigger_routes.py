@@ -36,7 +36,7 @@ async def run_trigger(db: AsyncSession = Depends(get_db)):
 @router.post("/simulate-drought/{farm_id}")
 async def simulate_drought_route(farm_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     """
-    Inject a simulated drought event for a single farm.
+    Inject a simulated drought event for a particular farm.
     Sends a notification but does NOT trigger a real M-Pesa B2C payout.
     Useful for demos and integration testing.
     """
