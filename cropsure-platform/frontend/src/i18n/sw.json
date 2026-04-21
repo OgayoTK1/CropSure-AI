@@ -1,0 +1,98 @@
+{
+  "enrollment": {
+    "title": "Andikisha Shamba Lako",
+    "step1": "Maelezo ya Mkulima",
+    "step2": "Mipaka ya GPS",
+    "step3": "Malipo"
+  },
+  "farmer": {
+    "fullName": "Jina Kamili",
+    "fullNamePlaceholder": "mf. James Mwangi",
+    "phone": "Nambari ya Simu (M-Pesa)",
+    "phonePlaceholder": "07XXXXXXXX",
+    "phoneError": "Ingiza nambari ya Kenya sahihi (07XXXXXXXX)",
+    "village": "Kijiji / Mahali",
+    "villagePlaceholder": "mf. Kiambu",
+    "cropType": "Aina ya Mazao",
+    "selectCrop": "Chagua zao..."
+  },
+  "map": {
+    "walkMode": "Hali ya Kutembea",
+    "manualMode": "Hali ya Mikono",
+    "startWalking": "Anza Kutembea",
+    "stopClose": "Simama & Funga Mipaka",
+    "gpsPoints": "Pointi {{count}} za GPS zimechukuliwa",
+    "clickToClose": "Bonyeza pointi ya kwanza kufunga mipaka",
+    "clickToAdd": "Bonyeza ramani kuongeza pointi za mipaka",
+    "area": "Eneo la Shamba",
+    "confirm": "Thibitisha Mipaka ya Shamba",
+    "gpsError": "GPS haipatikani kwenye kifaa hiki",
+    "minPoints": "Tembea angalau pointi 4 za GPS kabla ya kusimama"
+  },
+  "payment": {
+    "summary": "Muhtasari wa Polisi",
+    "farmArea": "Eneo la Shamba",
+    "cropType": "Aina ya Zao",
+    "premium": "Bima ya Mwaka",
+    "coverage": "Kiasi cha Fidia",
+    "period": "Muda wa Bima",
+    "payButton": "Lipa KES {{amount}} kupitia M-Pesa",
+    "processing": "Inashughulikia...",
+    "successTitle": "Shamba Limeandikishwa!",
+    "successMessage": "Ombi la M-Pesa limetumwa kwa {{phone}}",
+    "policy": "Polisi #{{id}}",
+    "back": "Rudi",
+    "enrollAnother": "Andikisha Shamba Lingine"
+  },
+  "dashboard": {
+    "title": "Dashibodi ya Msimamizi",
+    "demo": "Uigaji wa Maonyesho",
+    "totalFarms": "Jumla ya Mashamba",
+    "activePolicies": "Polisi Zinazofanya Kazi",
+    "payouts": "Malipo Msimu Huu (KES)",
+    "farmsUnderStress": "Mashamba Yenye Msongo",
+    "recentActivity": "Shughuli za Hivi Karibuni",
+    "ndviTrend": "Mwelekeo wa NDVI",
+    "selectFarm": "Chagua shamba kwenye ramani kuona mwelekeo wa NDVI",
+    "simulateDrought": "Simula Tukio la Ukame",
+    "simulating": "Inasimula...",
+    "payoutToast": "Malipo yametolewa! KES {{amount}} imetumwa kwa {{phone}}",
+    "noFarmSelected": "Chagua shamba kwenye ramani kwanza",
+    "baseline": "Msingi wa Kihistoria",
+    "current": "Msimu wa Sasa",
+    "payoutTrigger": "Malipo Yalitolewa",
+    "healthy": "Afya Nzuri",
+    "mildStress": "Msongo Kidogo",
+    "severeStress": "Msongo Mkubwa / Malipo"
+  },
+  "farmDetail": {
+    "title": "Maelezo ya Shamba",
+    "policy": "Hali ya Polisi",
+    "active": "Inafanya Kazi",
+    "inactive": "Haifanyi Kazi",
+    "payoutHistory": "Historia ya Malipo",
+    "noPayouts": "Hakuna malipo yaliyotolewa kwa shamba hili.",
+    "payoutReason": "Sababu",
+    "back": "Rudi Dashibodini",
+    "ndviTrend": "Historia ya NDVI"
+  },
+  "common": {
+    "loading": "Inapakia...",
+    "error": "Kuna tatizo",
+    "retry": "Jaribu Tena",
+    "noData": "Hakuna data",
+    "acres": "ekari",
+    "kes": "KES",
+    "to": "hadi",
+    "next": "Endelea",
+    "back": "Rudi",
+    "viewDetails": "Angalia Maelezo"
+  },
+  "lang": {
+    "toggle": "Kiingereza"
+  },
+  "nav": {
+    "enroll": "Andikisha Shamba",
+    "dashboard": "Dashibodi"
+  }
+}
