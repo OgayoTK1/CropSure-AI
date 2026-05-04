@@ -1,0 +1,32 @@
+# Normalize text file line endings across platforms.
+# Keep JSON stable (LF) to avoid CRLF churn on Windows.
+
+* text=auto
+
+*.json text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+*.txt  text eol=lf
+
+# Common source files
+*.py   text eol=lf
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.js   text eol=lf
+*.jsx  text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+
+# Windows scripts should use CRLF
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# Binary assets
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.pdf  binary

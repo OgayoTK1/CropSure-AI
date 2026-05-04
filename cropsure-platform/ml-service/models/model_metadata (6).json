@@ -13,12 +13,12 @@
     "2": "flood",
     "3": "pest_disease"
   },
-  "accuracy": 0.5742924528301887,
-  "macro_f1": 0.41096361665186787,
-  "payout_threshold": 0.8852626291590964,
+  "accuracy": 0.5683962264150944,
+  "macro_f1": 0.403964054355986,
+  "payout_threshold": 0.8689577854865315,
   "training_samples": 18524,
   "eval_samples": 1696,
-  "trained_at": "2026-04-20T10:08:38.327091",
+  "trained_at": "2026-05-04T08:56:07.508554",
   "data_sources": [
     "Sentinel-2 L2A GEE",
     "MODIS MOD13Q1 GEE",
