@@ -1,0 +1,88 @@
+version: '3.9'
+
+services:
+
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: cropsure_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ml-service:
+    build: ./ml-service
+    container_name: cropsure_ml
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    env_file: .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  backend:
+    build: ./backend
+    container_name: cropsure_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file: .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ml-service:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    container_name: cropsure_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    env_file: .env
+    depends_on:
+      - backend
+
+  whatsapp-bot:
+    build: ./integration/whatsapp_bot
+    container_name: cropsure_whatsapp
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    env_file: .env
+    depends_on:
+      - backend
+
+  ussd:
+    build: ./integration/ussd
+    container_name: cropsure_ussd
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    env_file: .env
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
