@@ -1,0 +1,13 @@
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+sentinelhub==3.10.2
+lightgbm==4.3.0
+scikit-learn==1.4.2
+joblib==1.4.2
+numpy==1.26.4
+pandas==2.2.2
+geopandas==0.14.4
+shapely==2.0.4
+rasterio==1.3.10
+requests==2.32.3
+python-dotenv==1.0.1

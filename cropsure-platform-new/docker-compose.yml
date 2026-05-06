@@ -1,0 +1,106 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: cropsure_db
+    environment:
+      POSTGRES_DB: cropsure
+      POSTGRES_USER: cropsure
+      POSTGRES_PASSWORD: cropsure
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cropsure"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ml-service:
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    container_name: cropsure_ml
+    ports:
+      - "8001:8001"
+    env_file: .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./ml-service/models:/app/models
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cropsure_backend
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://cropsure:cropsure@postgres:5432/cropsure
+      - ML_SERVICE_URL=http://ml-service:8001
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ml-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cropsure_frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  whatsapp-bot:
+    build:
+      context: ./integration/whatsapp_bot
+      dockerfile: Dockerfile
+    container_name: cropsure_whatsapp
+    ports:
+      - "5000:5000"
+    env_file: .env
+    environment:
+      - BACKEND_URL=http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  ussd:
+    build:
+      context: ./integration/ussd
+      dockerfile: Dockerfile
+    container_name: cropsure_ussd
+    ports:
+      - "5001:5001"
+    env_file: .env
+    environment:
+      - BACKEND_URL=http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
