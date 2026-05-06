@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, Marker, Polygon, TileLayer, useMapEvents } from 'react-leaflet';
 import type { LatLngExpression } from 'leaflet';
+import { useTranslation } from 'react-i18next';
 
 import { DEFAULT_ZOOM, KENYA_CENTER } from '@/config';
-import { Button, Card, CardTitle, Muted } from '@/components/ui';
+import { Button } from '@/components/ui';
 import type { GeoJSONPolygon } from '@/types';
 import { pointsToPolygon, type LatLng } from '@/utils/geojson';
+import { polygonAreaMeters2, meters2ToAcres } from '@/utils/area';
 
 type Mode = 'manual' | 'walk';
 
@@ -26,49 +28,51 @@ export default function BoundaryMap({
   value: GeoJSONPolygon | null;
   onChange: (polygon: GeoJSONPolygon | null) => void;
 }) {
-  const [mode, setMode] = useState<Mode>('manual');
+  const { t } = useTranslation();
+  const [mode, setMode] = useState<Mode>('walk');
   const [points, setPoints] = useState<LatLng[]>([]);
   const [walking, setWalking] = useState(false);
+  const [gpsStatus, setGpsStatus] = useState<'idle' | 'acquiring' | 'active' | 'error'>('idle');
   const watchIdRef = useRef<number | null>(null);
   const pointsRef = useRef(points);
 
-  const center = useMemo<LatLngExpression>(() => {
-    return KENYA_CENTER;
-  }, []);
+  const center = useMemo<LatLngExpression>(() => KENYA_CENTER, []);
 
   useEffect(() => {
-    // If a polygon was loaded from outside, we won't attempt to reverse it here.
-    // Enrollment flow starts from empty state.
-    if (!value) {
-      setPoints([]);
-    }
+    if (!value) setPoints([]);
   }, [value]);
 
   function updatePoints(next: LatLng[]) {
+    pointsRef.current = next;
     setPoints(next);
     onChange(pointsToPolygon(next));
   }
 
   function startWalking() {
     if (!('geolocation' in navigator)) {
-      alert('GPS unavailable. Please enable location access.');
+      alert(t('gps_error'));
       return;
     }
+    setGpsStatus('acquiring');
     setWalking(true);
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
+        setGpsStatus('active');
         const p = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         updatePoints([...pointsRef.current, p]);
       },
       () => {
-        alert('GPS unavailable. Please enable location access.');
+        setGpsStatus('error');
+        setWalking(false);
+        alert(t('gps_error'));
       },
-      { enableHighAccuracy: true, maximumAge: 1500, timeout: 10000 }
+      { enableHighAccuracy: true, maximumAge: 1500, timeout: 10000 },
     );
   }
 
   function stopWalking() {
     setWalking(false);
+    setGpsStatus('idle');
     if (watchIdRef.current != null) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
@@ -85,41 +89,68 @@ export default function BoundaryMap({
     };
   }, []);
 
-  const polygonLatLngs = useMemo(() => points.map((p) => [p.lat, p.lng] as [number, number]), [points]);
+  const polygonLatLngs = useMemo(
+    () => points.map((p) => [p.lat, p.lng] as [number, number]),
+    [points],
+  );
+
+  const areaAcres = useMemo(() => {
+    const poly = pointsToPolygon(points);
+    if (!poly) return 0;
+    return meters2ToAcres(polygonAreaMeters2(poly));
+  }, [points]);
+
+  const tipText = mode === 'walk' ? t('tip_walk') : t('tip_manual');
 
   return (
-    <Card>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <CardTitle>Farm Boundary</CardTitle>
-          <Muted>
-            {mode === 'manual'
-              ? 'Click on the map to add boundary points.'
-              : 'Walk around your farm boundary. Points will be captured automatically.'}
-          </Muted>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant={mode === 'manual' ? 'primary' : 'secondary'}
-            onClick={() => {
-              stopWalking();
-              setMode('manual');
-            }}
-          >
-            Manual Mode
-          </Button>
-          <Button
-            type="button"
-            variant={mode === 'walk' ? 'primary' : 'secondary'}
-            onClick={() => setMode('walk')}
-          >
-            Walk Mode
-          </Button>
-        </div>
+    <div className="flex flex-col gap-3">
+      {/* Mode toggle */}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => setMode('walk')}
+          className={[
+            'flex-1 rounded-lg border py-2 text-sm font-semibold transition',
+            mode === 'walk'
+              ? 'border-primary bg-primary text-white'
+              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+          ].join(' ')}
+        >
+          {t('walk_mode')}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            stopWalking();
+            setMode('manual');
+          }}
+          className={[
+            'flex-1 rounded-lg border py-2 text-sm font-semibold transition',
+            mode === 'manual'
+              ? 'border-primary bg-primary text-white'
+              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+          ].join(' ')}
+        >
+          {t('manual_mode')}
+        </button>
       </div>
 
-      <div className="mt-4 h-[420px] overflow-hidden rounded-lg border border-slate-200">
+      {/* Yellow tip bar */}
+      <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        <span className="mt-0.5 shrink-0 text-base">💡</span>
+        <span>{tipText}</span>
+      </div>
+
+      {/* GPS status bar (walk mode only) */}
+      {mode === 'walk' && walking && (
+        <div className="flex items-center gap-2 rounded-lg bg-primary-light px-3 py-2 text-sm text-primary">
+          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-primary" />
+          {gpsStatus === 'acquiring' ? t('gps_acquiring') : t('gps_status_walking')}
+        </div>
+      )}
+
+      {/* Map */}
+      <div className="h-72 overflow-hidden rounded-xl border border-slate-200 shadow-sm sm:h-96">
         <MapContainer center={center} zoom={DEFAULT_ZOOM} scrollWheelZoom>
           <TileLayer
             attribution="&copy; OpenStreetMap contributors"
@@ -132,32 +163,59 @@ export default function BoundaryMap({
           {points.map((p, idx) => (
             <Marker key={idx} position={[p.lat, p.lng]} />
           ))}
-          {points.length >= 3 ? <Polygon positions={polygonLatLngs} /> : null}
+          {points.length >= 3 ? (
+            <Polygon
+              positions={polygonLatLngs}
+              pathOptions={{ color: '#1D9E75', fillColor: '#1D9E75', fillOpacity: 0.15, weight: 2 }}
+            />
+          ) : null}
         </MapContainer>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-        <div className="text-sm text-slate-600">Points captured: {points.length}</div>
-        <div className="flex items-center gap-2">
-          {mode === 'walk' && !walking ? (
-            <Button type="button" onClick={startWalking}>
-              Start Walking Boundary
+      {/* Stats row */}
+      <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
+        <span className="text-slate-600">
+          {t('points_captured', { count: points.length })}
+        </span>
+        {areaAcres > 0 && (
+          <span className="font-semibold text-primary">
+            {areaAcres.toFixed(2)} acres
+          </span>
+        )}
+      </div>
+
+      {/* Walk controls */}
+      {mode === 'walk' && (
+        <div className="flex gap-2">
+          {!walking ? (
+            <Button type="button" className="flex-1" onClick={startWalking}>
+              {t('start_walking')}
             </Button>
-          ) : null}
-          {mode === 'walk' && walking ? (
-            <Button type="button" variant="secondary" onClick={stopWalking}>
-              Stop
+          ) : (
+            <Button type="button" variant="secondary" className="flex-1" onClick={stopWalking}>
+              {t('stop_close')}
             </Button>
-          ) : null}
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => updatePoints([])}
-          >
-            Clear
+          )}
+          {points.length > 0 && (
+            <Button type="button" variant="secondary" onClick={() => updatePoints([])}>
+              Clear
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Manual controls */}
+      {mode === 'manual' && points.length > 0 && (
+        <div className="flex justify-end">
+          <Button type="button" variant="secondary" onClick={() => updatePoints([])}>
+            Clear Points
           </Button>
         </div>
-      </div>
-    </Card>
+      )}
+
+      {points.length > 0 && points.length < 3 && (
+        <p className="text-xs text-amber-700">{t('min_points_warning')}</p>
+      )}
+    </div>
   );
 }
