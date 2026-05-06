@@ -11,8 +11,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-CONSUMER_KEY = os.getenv("MPESA_CONSUMER_KEY", "")
-CONSUMER_SECRET = os.getenv("MPESA_CONSUMER_SECRET", "")
+CONSUMER_KEY = os.getenv("MPESA_CONSUMER_KEY", "SyvS0LAsUwd38QndigXoYEyAjviQfzVAOaxX2UnizpbF2xdZ")
+CONSUMER_SECRET = os.getenv("MPESA_CONSUMER_SECRET", "I3ycxJdx4yn8JM5gFbTd1y8GwGpAjoIggv9KYJ3JstKmD0oFh362SdnGtMYwBm1g")
 SHORTCODE = os.getenv("MPESA_SHORTCODE", "174379")
 PASSKEY = os.getenv("MPESA_PASSKEY", "")
 INITIATOR_NAME = os.getenv("MPESA_INITIATOR_NAME", "")
@@ -23,7 +23,7 @@ B2C_TIMEOUT_URL = os.getenv("MPESA_B2C_TIMEOUT_URL", "https://example.com/mpesa/
 ENVIRONMENT = os.getenv("MPESA_ENVIRONMENT", "sandbox")  # sandbox | production
 
 BASE_URL = (
-    "https://sandbox.safaricom.co.ke"
+    "https://developer.safaricom.co.ke/Cropsre"
     if ENVIRONMENT == "sandbox"
     else "https://api.safaricom.co.ke"
 )
