@@ -66,8 +66,8 @@ class EnrollRequest(BaseModel):
     @classmethod
     def phone_must_be_safaricom(cls, v: str) -> str:
         import re
-        if not re.fullmatch(r"2547\d{8}", v):
-            raise ValueError("phone_number must be in format 2547XXXXXXXX")
+        if not re.fullmatch(r"254[71]\d{8}", v):
+            raise ValueError("phone_number must be in format 2547XXXXXXXX or 2541XXXXXXXX")
         return v
 
 
@@ -190,6 +190,9 @@ async def enroll_farm(
     except Exception as exc:
         logger.error("STK push failed for farm %s: %s", farm.id, exc)
         stk_resp = {"error": str(exc)}
+
+    # Commit now so mpesa_reference is in the DB before Safaricom fires the callback
+    await db.commit()
 
     # Fire-and-forget ML baseline build
     background_tasks.add_task(call_ml_baseline, str(farm.id), body.polygon_geojson)

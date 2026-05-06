@@ -19,7 +19,11 @@ logger = logging.getLogger(__name__)
 # Africa's Talking
 AT_API_KEY = os.getenv("AT_API_KEY", "")
 AT_USERNAME = os.getenv("AT_USERNAME", "sandbox")
-AT_SMS_URL = "https://api.africastalking.com/version1/messaging"
+AT_SMS_URL = (
+    "https://api.sandbox.africastalking.com/version1/messaging"
+    if AT_USERNAME == "sandbox"
+    else "https://api.africastalking.com/version1/messaging"
+)
 
 # Twilio WhatsApp
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
