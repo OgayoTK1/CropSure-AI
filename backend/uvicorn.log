@@ -1,0 +1,9 @@
+INFO:     Started server process [13728]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:49249 - "POST /farms/enroll HTTP/1.1" 201 Created
+STK payment failed for policy 058514d4-75db-430c-88a0-cd44f898cbf2 (code 1037)
+INFO:     196.201.212.74:0 - "POST /mpesa/stk-callback HTTP/1.1" 200 OK
+ML baseline build failed for farm 673f87f4-5c93-492c-8b64-e683565612c6: All connection attempts failed
+INFO:     127.0.0.1:49259 - "GET /farms/673f87f4-5c93-492c-8b64-e683565612c6 HTTP/1.1" 200 OK

@@ -268,5 +268,5 @@ async def simulate_drought(farm_id: uuid.UUID, db: AsyncSession) -> dict:
         "payout_amount_kes": simulated_ml["payout_amount_kes"],
         "conversation_id": b2c_resp.get("ConversationID"),
         "payout_status": payout.status,
-        "note": "Simulated drought — full pipeline executed",
+        "note": "Simulated drought - full pipeline executed",
     }
