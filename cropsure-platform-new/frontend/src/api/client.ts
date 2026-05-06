@@ -60,7 +60,7 @@ export async function simulateDrought(farmId: string): Promise<unknown> {
 }
 
 export async function runMonitoring(): Promise<unknown> {
-  const response = await apiClient.post('/monitoring/run');
+  const response = await apiClient.post('/trigger/run');
   return response.data;
 }
 

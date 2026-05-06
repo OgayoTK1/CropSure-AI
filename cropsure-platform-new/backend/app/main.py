@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .database import create_tables
 from .config import get_settings
-from .routers import farms, mpesa_webhooks, trigger_routes
+from .routers import api_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -37,9 +37,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(farms.router)
-app.include_router(mpesa_webhooks.router)
-app.include_router(trigger_routes.router)
+app.include_router(api_router)
 
 
 @app.get("/")
