@@ -23,7 +23,7 @@ const StepPaymentConfirmation: React.FC<Props> = ({
   const [result, setResult] = useState<EnrollResponse | null>(null);
 
   const premium = Math.round(areaAcres * 300);
-  const coverage = premium * 8;
+  const coverage = premium * 10;
 
   const now = new Date();
   const end = new Date(now);

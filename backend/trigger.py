@@ -193,16 +193,13 @@ async def simulate_drought(farm_id: uuid.UUID, db: AsyncSession) -> dict:
     if not farm:
         raise ValueError(f"Farm {farm_id} not found")
 
-    # Get active policy
+    # Get most recent policy (active preferred, otherwise any — allows demo on sandbox farms)
     pol_result = await db.execute(
-        select(Policy).where(
-            Policy.farm_id == farm_id,
-            Policy.status == PolicyStatus.active,
-        )
+        select(Policy).where(Policy.farm_id == farm_id).order_by(Policy.created_at.desc()).limit(1)
     )
     policy = pol_result.scalar_one_or_none()
     if not policy:
-        raise ValueError(f"No active policy for farm {farm_id}")
+        raise ValueError(f"No policy for farm {farm_id}")
 
     # Build a synthetic ML response
     simulated_ml = {
@@ -264,6 +261,7 @@ async def simulate_drought(farm_id: uuid.UUID, db: AsyncSession) -> dict:
     return {
         "farm_id": str(farm.id),
         "farmer_name": farm.farmer_name,
+        "phone_number": farm.phone_number,
         "simulated_ndvi": simulated_ml["ndvi_value"],
         "payout_amount_kes": simulated_ml["payout_amount_kes"],
         "conversation_id": b2c_resp.get("ConversationID"),

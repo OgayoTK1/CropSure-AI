@@ -27,14 +27,6 @@ const Header: React.FC = () => {
         </Link>
 
         <div className="flex items-center gap-3">
-          {/* Demo badge on dashboard */}
-          {isDashboard && (
-            <span className="hidden sm:inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-amber-200">
-              <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
-              {t('dashboard.demo')}
-            </span>
-          )}
-
           {/* Nav links */}
           <nav className="hidden sm:flex items-center gap-1">
             <Link

@@ -27,7 +27,9 @@
     "area": "Eneo la Shamba",
     "confirm": "Thibitisha Mipaka ya Shamba",
     "gpsError": "GPS haipatikani kwenye kifaa hiki",
-    "minPoints": "Tembea angalau pointi 4 za GPS kabla ya kusimama"
+    "minPoints": "Tembea angalau pointi 4 za GPS kabla ya kusimama",
+    "closeBoundary": "Funga Mipaka",
+    "resetBoundary": "Weka upya mipaka"
   },
   "payment": {
     "summary": "Muhtasari wa Polisi",
