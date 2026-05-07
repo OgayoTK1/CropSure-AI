@@ -1,0 +1,22 @@
+{
+  "classes": {
+    "0": "no_stress",
+    "1": "drought",
+    "2": "flood",
+    "3": "pest_disease"
+  },
+  "feature_cols": [
+    "ndvi_zscore",
+    "ndvi_roc",
+    "rainfall_anomaly_mm",
+    "day_of_year",
+    "seasonal_factor",
+    "cloud_contaminated"
+  ],
+  "accuracy": 0.9617,
+  "macro_f1": 0.9349,
+  "training_samples": 2400,
+  "eval_samples": 600,
+  "trained_at": "2026-05-07T16:14:09.799732",
+  "data_source": "synthetic"
+}

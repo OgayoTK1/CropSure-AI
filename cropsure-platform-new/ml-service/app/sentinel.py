@@ -29,13 +29,13 @@ logger = logging.getLogger(__name__)
 #
 # OPTION A — Sentinel Hub (sentinelhub.com)  ← DEFAULT, works out of the box
 # ─────────────────────────────────────────────────────────────────────────────
-#SENTINEL_HUB_TOKEN_URL = (
+SENTINEL_HUB_TOKEN_URL = (
     "https://services.sentinel-hub.com/auth/realms/main"
-    "/protocol/openid-connect/token"                        # ← REPLACE (Option B)
+    "/protocol/openid-connect/token"
 )
-#SENTINEL_HUB_STATS_URL = (
-#    "https://services.sentinel-hub.com/api/v1/statistics"  # ← REPLACE (Option B)
-#)
+SENTINEL_HUB_STATS_URL = (
+    "https://services.sentinel-hub.com/api/v1/statistics"
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # OPTION B — Copernicus Data Space Ecosystem (dataspace.copernicus.eu)
@@ -43,12 +43,15 @@ logger = logging.getLogger(__name__)
 #            If you registered on CDSE instead of Sentinel Hub,
 #            comment out Option A above and uncomment these two lines:
 #
-SENTINEL_HUB_TOKEN_URL = (
-     "https://identity.dataspace.copernicus.eu/auth/realms/CDSE"
-     "/protocol/openid-connect/token"
- )
-SENTINEL_HUB_STATS_URL = (
-     "https://sh.dataspace.copernicus.eu/api/v1/statistics"
+# OPTION B — Copernicus Data Space Ecosystem (dataspace.copernicus.eu)
+# If you registered on CDSE instead of Sentinel Hub,
+# comment out Option A above and uncomment these two lines:
+# SENTINEL_HUB_TOKEN_URL = (
+#     "https://identity.dataspace.copernicus.eu/auth/realms/CDSE"
+#     "/protocol/openid-connect/token"
+# )
+# SENTINEL_HUB_STATS_URL = (
+#     "https://sh.dataspace.copernicus.eu/api/v1/statistics"
 # )
 # ─────────────────────────────────────────────────────────────────────────────
 

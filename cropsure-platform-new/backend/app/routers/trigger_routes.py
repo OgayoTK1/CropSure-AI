@@ -46,6 +46,19 @@ async def simulate_drought(farm_id: str, db: AsyncSession = Depends(get_db)):
         "simulated": True,
     }
 
+    # For demo: if no active policy exists, temporarily promote pending_payment → active
+    from ..models import Policy, PolicyStatus
+    policy = (await db.execute(
+        select(Policy).where(Policy.farm_id == farm_id).order_by(Policy.created_at.desc()).limit(1)
+    )).scalars().first()
+    if not policy:
+        raise HTTPException(status_code=400, detail="No policy found for this farm")
+    demo_promoted = False
+    if policy.status != PolicyStatus.active:
+        policy.status = PolicyStatus.active
+        demo_promoted = True
+        await db.flush()
+
     await _maybe_trigger_payout(farm, drought_analysis, db)
     await db.commit()
 

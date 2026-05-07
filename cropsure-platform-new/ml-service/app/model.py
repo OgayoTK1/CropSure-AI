@@ -1,5 +1,6 @@
 """Stress classification model: load, predict, explain."""
 
+import math
 import os
 import logging
 from datetime import datetime
@@ -35,6 +36,11 @@ EXPLANATIONS = {
 _model_cache: Optional[dict] = None
 
 
+def _seasonal_factor(day_of_year: float) -> float:
+    """Sin-transformed East Africa rain cycle — matches train.py exactly."""
+    return 0.15 * math.sin((day_of_year - 60) * math.pi / 182)
+
+
 def _load_model() -> dict:
     global _model_cache
     if _model_cache is not None:
@@ -49,40 +55,59 @@ def _load_model() -> dict:
 
 def predict_stress(features: dict) -> dict:
     """
-    features keys: ndvi_zscore, ndvi_rate_of_change_3period, rainfall_anomaly_mm,
-                   day_of_year, cloud_contaminated
+    Predict crop stress from a feature dict.
+
+    Expected keys (standardised — all come from build_feature_vector()):
+        ndvi_zscore            z-score vs farm personal baseline
+        ndvi_roc               rate of change over last 3 readings
+        rainfall_anomaly_mm    too little = drought, too much = flood
+        day_of_year            1-365
+        cloud_contaminated     0 or 1
+
+    seasonal_factor is computed internally from day_of_year so it always
+    matches the training formula even if the caller omits it.
+
     Returns: stress_type, confidence, payout_recommended, probabilities
     """
     artifact = _load_model()
     model = artifact["model"]
-    label_map: dict = artifact["label_map"]
+    label_map: dict = artifact["classes"]  # {0: "no_stress", 1: "drought", ...}
 
+    day_of_year = float(features.get("day_of_year", 180))
+    cloud = bool(features.get("cloud_contaminated", False))
+
+    # Build the 6-column vector in the same order as train.py FEATURE_NAMES:
+    # [ndvi_zscore, ndvi_roc, rainfall_anomaly_mm, day_of_year, seasonal_factor, cloud_contaminated]
     feature_vec = np.array([[
-        features.get("ndvi_zscore", 0.0),
-        features.get("ndvi_rate_of_change_3period", 0.0),
-        features.get("rainfall_anomaly_mm", 0.0),
-        features.get("day_of_year", 180),
-        float(features.get("cloud_contaminated", False)),
+        float(features.get("ndvi_zscore", 0.0)),
+        float(features.get("ndvi_roc", 0.0)),           # key must be "ndvi_roc"
+        float(features.get("rainfall_anomaly_mm", 0.0)),
+        day_of_year,
+        _seasonal_factor(day_of_year),                   # always computed, not trusted from dict
+        float(cloud),
     ]], dtype=np.float32)
 
-    label_idx = int(model.predict(feature_vec)[0])
-    try:
+    import warnings
+    with warnings.catch_warnings():
+        # LightGBM trained with auto-generated column names; numpy array is fine
+        warnings.filterwarnings("ignore", message="X does not have valid feature names")
         proba = model.predict_proba(feature_vec)[0]
-        confidence = float(proba[label_idx])
-        probabilities = {label_map[i]: round(float(p), 4) for i, p in enumerate(proba)}
-    except AttributeError:
-        confidence = 0.85
-        probabilities = {v: 0.0 for v in label_map.values()}
-        probabilities[label_map[label_idx]] = confidence
-
+    label_idx = int(np.argmax(proba))
+    confidence = float(np.max(proba))
     stress_type = label_map[label_idx]
-    payout_recommended = stress_type != "no_stress" and confidence >= PAYOUT_CONFIDENCE_THRESHOLD
+
+    # Suppress payout if reading is cloud-contaminated (unreliable NDVI)
+    payout_recommended = (
+        stress_type != "no_stress"
+        and confidence >= PAYOUT_CONFIDENCE_THRESHOLD
+        and not cloud
+    )
 
     return {
         "stress_type": stress_type,
         "confidence": round(confidence, 4),
         "payout_recommended": payout_recommended,
-        "probabilities": probabilities,
+        "probabilities": {label_map[i]: round(float(p), 4) for i, p in enumerate(proba)},
     }
 
 
