@@ -1,9 +1,27 @@
-INFO:     Started server process [13728]
+INFO:     Will watch for changes in these directories: ['C:\\Users\\JAMES\\CropSure-AI\\backend']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [5356] using WatchFiles
+INFO:     Started server process [6388]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
-INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
-INFO:     127.0.0.1:49249 - "POST /farms/enroll HTTP/1.1" 201 Created
-STK payment failed for policy 058514d4-75db-430c-88a0-cd44f898cbf2 (code 1037)
-INFO:     196.201.212.74:0 - "POST /mpesa/stk-callback HTTP/1.1" 200 OK
-ML baseline build failed for farm 673f87f4-5c93-492c-8b64-e683565612c6: All connection attempts failed
-INFO:     127.0.0.1:49259 - "GET /farms/673f87f4-5c93-492c-8b64-e683565612c6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50363 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50377 - "GET /farms HTTP/1.1" 200 OK
+No payout found for ConversationID AG_20260507_010010360zta19mr88n5
+INFO:     196.201.212.69:0 - "POST /mpesa/b2c-callback HTTP/1.1" 200 OK
+WhatsApp notification to 254701498294 failed: HTTP 404 error: Unable to create record: The requested resource /2010-04-01/Accounts//Messages.json was not found
+INFO:     127.0.0.1:50379 - "POST /trigger/simulate-drought/cb50e17e-8fee-4a04-8ed6-1f16d9a8e28a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50390 - "GET /farms HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50391 - "GET /farms HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50404 - "GET /farms HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50407 - "GET /farms HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50413 - "GET /farms HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50415 - "GET /farms/cb50e17e-8fee-4a04-8ed6-1f16d9a8e28a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50405 - "GET /farms HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50420 - "GET /farms HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50422 - "GET /farms/cb50e17e-8fee-4a04-8ed6-1f16d9a8e28a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50424 - "POST /farms/enroll HTTP/1.1" 422 Unprocessable Content
+No payout found for ConversationID AG_20260507_010010360zxm802wpa0o
+INFO:     196.201.212.69:0 - "POST /mpesa/b2c-callback HTTP/1.1" 200 OK
+WhatsApp notification to 254701498294 failed: HTTP 404 error: Unable to create record: The requested resource /2010-04-01/Accounts//Messages.json was not found
+INFO:     127.0.0.1:50426 - "POST /trigger/simulate-drought/cb50e17e-8fee-4a04-8ed6-1f16d9a8e28a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50440 - "GET /farms HTTP/1.1" 200 OK

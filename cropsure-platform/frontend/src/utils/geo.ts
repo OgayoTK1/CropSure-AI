@@ -24,6 +24,7 @@ export function computeAreaAcres(coords: Coordinate[]): number {
 }
 
 export function getCentroid(coords: Coordinate[]): Coordinate {
+  if (coords.length === 0) return { lat: -1.0, lng: 37.0 }; // Kenya centre fallback
   const lat = coords.reduce((s, c) => s + c.lat, 0) / coords.length;
   const lng = coords.reduce((s, c) => s + c.lng, 0) / coords.length;
   return { lat, lng };

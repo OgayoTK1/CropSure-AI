@@ -256,14 +256,14 @@ const StepGPSBoundary: React.FC<Props> = ({ onConfirm, onBack }) => {
           onClick={closeBoundary}
           className="w-full py-3 rounded-xl border-2 border-primary text-primary font-semibold hover:bg-primary/5 transition-colors"
         >
-          Close Boundary
+          {t('map.closeBoundary')}
         </button>
       )}
 
       {/* Reset */}
       {coordinates.length > 0 && (
         <button onClick={reset} className="w-full py-2 text-sm text-gray-400 hover:text-gray-600 transition-colors">
-          ↺ Reset boundary
+          ↺ {t('map.resetBoundary')}
         </button>
       )}
 

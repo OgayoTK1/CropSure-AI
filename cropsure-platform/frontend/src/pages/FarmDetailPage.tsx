@@ -85,6 +85,7 @@ const FarmDetailPage: React.FC = () => {
     );
   }
 
+  const hasBoundary = farm.boundary.length >= 3;
   const centroid = getCentroid(farm.boundary);
   const positions = farm.boundary.map((c) => [c.lat, c.lng] as [number, number]);
 
@@ -197,27 +198,35 @@ const FarmDetailPage: React.FC = () => {
         </div>
 
         {/* Farm map */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden" style={{ height: '260px' }}>
-          <MapContainer
-            center={[centroid.lat, centroid.lng]}
-            zoom={14}
-            style={{ width: '100%', height: '100%' }}
-          >
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' />
-            <Polygon
-              positions={positions}
-              pathOptions={{ color: '#1D9E75', fillColor: '#1D9E75', fillOpacity: 0.3, weight: 2 }}
-            />
-          </MapContainer>
-        </div>
+        {hasBoundary ? (
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden" style={{ height: '260px' }}>
+            <MapContainer
+              center={[centroid.lat, centroid.lng]}
+              zoom={14}
+              style={{ width: '100%', height: '100%' }}
+            >
+              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' />
+              <Polygon
+                positions={positions}
+                pathOptions={{ color: '#1D9E75', fillColor: '#1D9E75', fillOpacity: 0.3, weight: 2 }}
+              />
+            </MapContainer>
+          </div>
+        ) : null}
 
         {/* NDVI chart */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <h2 className="font-semibold text-gray-900 mb-3">{t('farmDetail.ndviTrend')}</h2>
-          <div style={{ height: '220px' }}>
-            <Line data={chartData} options={chartOptions} plugins={[payoutLinePlugin]} />
-          </div>
+          {farm.ndviHistory.length > 0 ? (
+            <div style={{ height: '220px' }}>
+              <Line data={chartData} options={chartOptions} plugins={[payoutLinePlugin]} />
+            </div>
+          ) : (
+            <div className="h-24 flex items-center justify-center text-sm text-gray-400 bg-gray-50 rounded-xl">
+              No NDVI readings yet
+            </div>
+          )}
         </div>
 
         {/* Payouts */}

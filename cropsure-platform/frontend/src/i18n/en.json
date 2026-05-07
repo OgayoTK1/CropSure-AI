@@ -27,7 +27,9 @@
     "area": "Farm Area",
     "confirm": "Confirm Farm Boundary",
     "gpsError": "GPS not available on this device",
-    "minPoints": "Walk at least 4 GPS points before stopping"
+    "minPoints": "Walk at least 4 GPS points before stopping",
+    "closeBoundary": "Close Boundary",
+    "resetBoundary": "Reset boundary"
   },
   "payment": {
     "summary": "Policy Summary",

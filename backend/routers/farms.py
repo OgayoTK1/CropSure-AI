@@ -95,6 +95,7 @@ class PayoutOut(BaseModel):
     payout_amount_kes: float
     stress_type: str
     explanation_en: str
+    explanation_sw: str
     status: str
     triggered_at: datetime
     completed_at: datetime | None
@@ -121,7 +122,9 @@ class FarmListItem(BaseModel):
     area_acres: float
     crop_type: str
     village: str
+    polygon_geojson: dict
     health_status: str | None   # latest stress_type from NDVI readings
+    policy_id: uuid.UUID | None
     policy_status: str | None
     created_at: datetime
 
@@ -262,6 +265,7 @@ async def get_farm(farm_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
                 payout_amount_kes=p.payout_amount_kes,
                 stress_type=p.stress_type,
                 explanation_en=p.explanation_en,
+                explanation_sw=p.explanation_sw or '',
                 status=p.status.value,
                 triggered_at=p.triggered_at,
                 completed_at=p.completed_at,
@@ -298,7 +302,9 @@ async def list_farms(db: AsyncSession = Depends(get_db)):
             area_acres=farm.area_acres,
             crop_type=farm.crop_type,
             village=farm.village,
+            polygon_geojson=farm.polygon_geojson,
             health_status=latest_ndvi.stress_type if latest_ndvi else None,
+            policy_id=active_policy.id if active_policy else None,
             policy_status=active_policy.status.value if active_policy else None,
             created_at=farm.created_at,
         ))
