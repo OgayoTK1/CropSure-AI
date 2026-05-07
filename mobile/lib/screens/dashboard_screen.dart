@@ -23,6 +23,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _loading = true;
   bool _simulating = false;
   Farm? _selected;
+  bool _loadingDetail = false;
   Timer? _timer;
 
   @override

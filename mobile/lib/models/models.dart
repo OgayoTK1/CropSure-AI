@@ -12,10 +12,12 @@ class Farm {
   final String createdAt;
   final String? healthStatus;   // drought | flood | none | null
   final String? policyStatus;   // active | pending_payment | expired
+  final String? policyId;
   final double? currentNdvi;
   final List<NdviReading> ndviHistory;
   final Policy? policy;
   final List<Payout> payouts;
+  final List<LatLng> boundary;
 
   const Farm({
     required this.id,
@@ -27,11 +29,23 @@ class Farm {
     required this.createdAt,
     this.healthStatus,
     this.policyStatus,
+    this.policyId,
     this.currentNdvi,
     this.ndviHistory = const [],
     this.policy,
     this.payouts = const [],
+    this.boundary = const [],
   });
+
+  static List<LatLng> _parseBoundary(dynamic geojson) {
+    if (geojson == null) return const [];
+    final coords = (geojson['coordinates'] as List<dynamic>?)?.firstOrNull as List<dynamic>?;
+    if (coords == null) return const [];
+    return coords
+        .whereType<List<dynamic>>()
+        .map((c) => LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble()))
+        .toList();
+  }
 
   factory Farm.fromJson(Map<String, dynamic> j) => Farm(
         id: j['id'] as String,
@@ -43,6 +57,7 @@ class Farm {
         createdAt: j['created_at'] as String? ?? '',
         healthStatus: j['health_status'] as String?,
         policyStatus: j['policy_status'] as String?,
+        policyId: j['policy_id'] as String? ?? (j['policy'] != null ? j['policy']['id'] as String? : null),
         currentNdvi: j['latest_ndvi'] != null
             ? (j['latest_ndvi']['ndvi_value'] as num?)?.toDouble()
             : null,
@@ -55,6 +70,7 @@ class Farm {
         payouts: (j['payout_history'] as List<dynamic>? ?? [])
             .map((e) => Payout.fromJson(e as Map<String, dynamic>))
             .toList(),
+        boundary: _parseBoundary(j['polygon_geojson']),
       );
 
   String get statusLabel {
@@ -136,6 +152,7 @@ class Payout {
   final double payoutAmountKes;
   final String stressType;
   final String explanationEn;
+  final String explanationSw;
   final String status;
   final String triggeredAt;
 
@@ -144,6 +161,7 @@ class Payout {
     required this.payoutAmountKes,
     required this.stressType,
     required this.explanationEn,
+    this.explanationSw = '',
     required this.status,
     required this.triggeredAt,
   });
@@ -152,7 +170,8 @@ class Payout {
         id: j['id'] as String,
         payoutAmountKes: (j['payout_amount_kes'] as num).toDouble(),
         stressType: j['stress_type'] as String,
-        explanationEn: j['explanation_en'] as String,
+        explanationEn: j['explanation_en'] as String? ?? '',
+        explanationSw: j['explanation_sw'] as String? ?? '',
         status: j['status'] as String,
         triggeredAt: j['triggered_at'] as String,
       );

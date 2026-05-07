@@ -112,6 +112,7 @@ class FarmDetailOut(BaseModel):
     polygon_geojson: dict
     policy: PolicyOut | None
     latest_ndvi: NdviOut | None
+    ndvi_history: list[NdviOut]
     payout_history: list[PayoutOut]
 
 
@@ -233,6 +234,17 @@ async def get_farm(farm_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     sorted_readings = sorted(farm.ndvi_readings, key=lambda r: r.created_at, reverse=True)
     latest = sorted_readings[0] if sorted_readings else None
 
+    ndvi_history_out = [
+        NdviOut(
+            reading_date=str(r.reading_date),
+            ndvi_value=r.ndvi_value,
+            stress_type=r.stress_type,
+            confidence=r.confidence,
+            cloud_contaminated=r.cloud_contaminated,
+        )
+        for r in sorted(farm.ndvi_readings, key=lambda r: r.created_at)
+    ]
+
     return FarmDetailOut(
         id=farm.id,
         farmer_name=farm.farmer_name,
@@ -242,6 +254,7 @@ async def get_farm(farm_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
         village=farm.village,
         created_at=farm.created_at,
         polygon_geojson=farm.polygon_geojson,
+        ndvi_history=ndvi_history_out,
         policy=PolicyOut(
             id=active_policy.id,
             season_start=active_policy.season_start,
