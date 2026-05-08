@@ -128,8 +128,21 @@ async def enroll_farm(req: EnrollRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("")
-async def list_farms(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Farm))
+async def list_farms(
+    phone: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """List all farms. Pass ?phone=07XXXXXXXX to filter by M-Pesa number (used by USSD)."""
+    query = select(Farm)
+    if phone:
+        # Normalise to match however the number was stored at enrollment
+        clean = phone.lstrip("+").lstrip("0")
+        query = query.where(
+            (Farm.phone_number == phone)
+            | (Farm.phone_number == f"0{clean[-9:]}")
+            | (Farm.phone_number == f"254{clean[-9:]}")
+        )
+    result = await db.execute(query)
     farms = result.scalars().all()
     output = []
     for f in farms:

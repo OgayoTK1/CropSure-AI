@@ -9,7 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .models import Farm, Policy, PolicyStatus, NDVIReading, Payout, PayoutStatus, Baseline
 from .mpesa import b2c_payment
-from .notifications import send_payout_notification
+from .notifications import (
+    send_payout_notification,
+    send_farm_progress_update,
+    send_early_warning,
+)
 from .config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -82,8 +86,57 @@ async def process_farm(farm: Farm, session: AsyncSession) -> dict:
     )
     session.add(reading)
 
+    stress_type   = analysis.get("stress_type", "no_stress")
+    ndvi_current  = analysis.get("ndvi_current", 0.0)
+    ndvi_baseline = analysis.get("ndvi_baseline_mean", ndvi_current)
+    deviation_pct = analysis.get("ndvi_deviation_pct") or 0.0
+    confidence    = analysis.get("confidence", 0.0)
+    cloud_ok      = not analysis.get("cloud_contaminated", False)
+
+    # Build recent NDVI series for chart in notifications
+    recent_rows = (await session.execute(
+        select(NDVIReading)
+        .where(NDVIReading.farm_id == farm.id)
+        .order_by(NDVIReading.reading_date.desc())
+        .limit(6)
+    )).scalars().all()
+    ndvi_series = [float(r.ndvi_value) for r in reversed(recent_rows)]
+
     if analysis.get("payout_recommended"):
+        # Stress confirmed above threshold → fire payout + payout notification
         await _maybe_trigger_payout(farm, analysis, session)
+
+    elif stress_type == "mild_stress" and confidence >= 0.55 and cloud_ok:
+        # Dropping fast but not yet at threshold → early warning
+        try:
+            await send_early_warning(
+                phone=farm.phone_number,
+                farmer_name=farm.farmer_name,
+                crop_type=farm.crop_type,
+                ndvi_current=ndvi_current,
+                ndvi_baseline=ndvi_baseline,
+                deviation_pct=deviation_pct,
+                stress_type=stress_type,
+                ndvi_series=ndvi_series,
+            )
+        except Exception as exc:
+            logger.error("Early warning notification failed for farm %s: %s", farm.id, exc)
+
+    else:
+        # Healthy or cloud-contaminated → send regular progress update
+        try:
+            await send_farm_progress_update(
+                phone=farm.phone_number,
+                farmer_name=farm.farmer_name,
+                crop_type=farm.crop_type,
+                ndvi_current=ndvi_current,
+                ndvi_baseline=ndvi_baseline,
+                deviation_pct=deviation_pct,
+                stress_type=stress_type,
+                ndvi_series=ndvi_series,
+            )
+        except Exception as exc:
+            logger.error("Progress update notification failed for farm %s: %s", farm.id, exc)
 
     await session.commit()
     return analysis
@@ -130,12 +183,24 @@ async def _maybe_trigger_payout(farm: Farm, analysis: dict, session: AsyncSessio
         payout.status = PayoutStatus.failed
 
     if payout.status == PayoutStatus.completed:
+        # Fetch recent NDVI series for WhatsApp chart
+        recent = (await session.execute(
+            select(NDVIReading)
+            .where(NDVIReading.farm_id == farm.id)
+            .order_by(NDVIReading.reading_date.desc())
+            .limit(6)
+        )).scalars().all()
+        ndvi_series = [float(r.ndvi_value) for r in reversed(recent)]
+
         await send_payout_notification(
             phone=farm.phone_number,
             farmer_name=farm.farmer_name,
             amount_kes=payout_amount,
             explanation_en=analysis.get("explanation_en", ""),
             explanation_sw=analysis.get("explanation_sw", ""),
+            ndvi_series=ndvi_series,
+            baseline_ndvi=analysis.get("ndvi_baseline_mean"),
+            stress_type=analysis.get("stress_type", "drought"),
         )
 
 
